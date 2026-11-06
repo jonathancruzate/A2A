@@ -1,0 +1,62 @@
+DRAFT — NOT APPLIED. For the fork's single `feat:` proto commit.
+=====================================================================
+Why this file exists (CONTRIBUTING.md, Conventional Commits):
+
+  * `feat:` / `fix:` are RESERVED exclusively for changes to the
+    protocol definition (`specification/a2a.proto`).
+  * Tip: "If a documentation change alters how the protocol should
+    be used, update the .proto file as well (even just its
+    comments) so that a new protocol release is triggered."
+
+The EMAIL and SPREADSHEET bindings alter how the protocol is used
+(they add two Layer-3 bindings) but require NO new proto types:
+`AgentInterface.protocol_binding` is already an open-form string.
+The minimal, honest proto change is therefore comment-only: name
+the two new known values where implementers look for them, and
+document their `url` forms next to the HTTP/gRPC forms. No field,
+enum, or wire change; fully backwards compatible.
+
+Apply with:  git apply proto-additions.patch.txt
+             (from the repo root, on feat/a2a-email-spreadsheet-bindings,
+              after regenerating paths if upstream has moved on)
+Then run:    ./scripts/build_docs.sh   (regenerates the JSON schema
+             artifact; the schema itself is unchanged by comments,
+             but CONTRIBUTING requires the build before any PR)
+=====================================================================
+
+--- a/specification/a2a.proto
++++ b/specification/a2a.proto
+@@
+ message AgentInterface {
+   // The URL or address where this interface is available. For HTTP-based transports, must be a valid absolute
+   // HTTPS URL in production. For gRPC, the address should be in the format "hostname:port".
+-  // Example: "https://api.example.com/a2a/v1", "grpc.example.com:443"
++  // For the EMAIL binding, the address is a "mailto:" URL naming the agent's mailbox.
++  // For the SPREADSHEET binding, the address is the canonical HTTPS URL of the shared
++  // spreadsheet; the spreadsheet ID in that URL is the endpoint identity.
++  // Example: "https://api.example.com/a2a/v1", "grpc.example.com:443",
++  // "mailto:agent@example.com", "https://docs.google.com/spreadsheets/d/<ID>/edit"
+   string url = 1 [(google.api.field_behavior) = REQUIRED];
+   // The protocol binding supported at this URL. This is an open form string, to be
+   // easily extended for other protocol bindings. The core ones officially
+-  // supported are `JSONRPC`, `GRPC` and `HTTP+JSON`.
++  // supported are `JSONRPC`, `GRPC` and `HTTP+JSON`. Additional standardized
++  // bindings defined by this specification are `EMAIL` (Section 15 of the
++  // specification: canonical A2A objects over Internet email, mailbox endpoint)
++  // and `SPREADSHEET` (Section 16: canonical A2A objects over a shared
++  // spreadsheet's append-only tabs, for agents with first-party spreadsheet
++  // access but no agent mailbox or hostable endpoint).
+   string protocol_binding = 2 [(google.api.field_behavior) = REQUIRED];
+
+Deliberately NOT proposed (considered and rejected for v1.0):
+
+  * No `enum ProtocolBinding`. `protocol_binding` is an open-form
+    string by design (custom bindings use URIs, spec Section 5.8);
+    an enum would break that extensibility for zero wire benefit.
+  * No new messages for email/spreadsheet payloads. Both bindings
+    carry the existing Task/Message/Part/Artifact objects in
+    ProtoJSON; new types would fork Layer 1, which this change
+    explicitly leaves unchanged.
+  * No tenant-field semantics for either binding. EMAIL routes by
+    mailbox; SPREADSHEET by (spreadsheet ID, tab). `tenant` stays
+    unused by both, and the amendments say so by omission.
