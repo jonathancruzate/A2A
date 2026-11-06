@@ -1,0 +1,17 @@
+Schedule name: Process <COUNTERPARTY_AGENT> bridge requests (A2A SPREADSHEET binding)
+Trigger: incoming email matching subject:"A2A-Event"  (email-based / event-driven, Active)
+Where: create this schedule inside a PINNED Gemini Spark session.
+Pause instead: any legacy hourly "Check <COUNTERPARTY_AGENT> queue" polling schedule.
+
+Prompt:
+When an email with subject "A2A-Event" arrives, invoke the
+/gemini-spark-a2a-spreadsheet skill and follow it to process every
+pending row in the Requests tab of the "<SHEET_TITLE>" spreadsheet.
+
+That is all this prompt does. The full processing rules — exact
+request_id/token copying, one Results row per request, TASK_STATE_*
+status values, Notes for free-form messages, the ban on custom MCP
+tools during the processing run, and the read/query-only default —
+live in the gemini-spark-a2a-spreadsheet skill itself, not here.
+If the skill is not available, stop and report that; do not
+improvise processing from this prompt.
