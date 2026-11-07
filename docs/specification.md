@@ -251,7 +251,7 @@ None specific to this operation beyond standard protocol errors.
 
 **Behavior:**
 
-The operation MUST return only tasks visible to the authenticated client and MUST use cursor-based pagination for performance and consistency. Tasks MUST be sorted by last update time in descending order. Implementations MUST implement appropriate authorization scoping to ensure clients can only access authorized tasks. See [Section 13.1 Data Access and Authorization Scoping](#131-data-access-and-authorization-scoping) for detailed security requirements.
+The operation MUST return only tasks visible to the authenticated client and MUST use cursor-based pagination for performance and consistency. Tasks MUST be sorted by last update time in descending order. Implementations MUST implement appropriate authorization scoping to ensure clients can only access authorized tasks. See [Section 15.1 Data Access and Authorization Scoping](#151-data-access-and-authorization-scoping) for detailed security requirements.
 
 ***Pagination Strategy:***
 
@@ -425,7 +425,7 @@ Retrieves a potentially more detailed version of the Agent Card after the client
 - **Card Replacement**: Clients retrieving this extended card SHOULD replace their cached public Agent Card with the content received from this endpoint for the duration of their authenticated session or until the card's version changes.
 - **Availability**: This operation is only available if the public Agent Card declares `capabilities.extendedAgentCard: true`.
 
-For detailed security guidance on extended agent cards, see [Section 13.3 Extended Agent Card Access Control](#133-extended-agent-card-access-control).
+For detailed security guidance on extended agent cards, see [Section 15.3 Extended Agent Card Access Control](#153-extended-agent-card-access-control).
 
 ### 3.2. Operation Parameter Objects
 
@@ -886,7 +886,7 @@ The agent MUST include authentication credentials in the request headers as spec
 - Agents SHOULD include a reasonable timeout for webhook requests (recommended: 10-30 seconds)
 - Agents MAY stop attempting delivery after a configured number of consecutive failures
 
-For detailed security guidance on push notifications, see [Section 13.2 Push Notification Security](#132-push-notification-security).
+For detailed security guidance on push notifications, see [Section 15.2 Push Notification Security](#152-push-notification-security).
 
 ### 4.4. Agent Discovery Objects
 
@@ -1159,35 +1159,35 @@ When an agent supports multiple protocols, all supported protocols **MUST**:
 
 ### 5.3. Method Mapping Reference
 
-| Functionality                   | JSON-RPC Method                    | gRPC Method                        | REST Endpoint                                           |
-| :------------------------------ | :--------------------------------- | :--------------------------------- | :------------------------------------------------------ |
-| Send message                    | `SendMessage`                      | `SendMessage`                      | `POST /message:send`                                    |
-| Send streaming message          | `SendStreamingMessage`             | `SendStreamingMessage`             | `POST /message:stream`                                  |
-| Get task                        | `GetTask`                          | `GetTask`                          | `GET /tasks/{id}`                                       |
-| List tasks                      | `ListTasks`                        | `ListTasks`                        | `GET /tasks`                                            |
-| Cancel task                     | `CancelTask`                       | `CancelTask`                       | `POST /tasks/{id}:cancel`                               |
-| Subscribe to task               | `SubscribeToTask`                  | `SubscribeToTask`                  | `POST /tasks/{id}:subscribe`                            |
-| Create push notification config | `CreateTaskPushNotificationConfig` | `CreateTaskPushNotificationConfig` | `POST /tasks/{id}/pushNotificationConfigs`              |
-| Get push notification config    | `GetTaskPushNotificationConfig`    | `GetTaskPushNotificationConfig`    | `GET /tasks/{id}/pushNotificationConfigs/{configId}`    |
-| List push notification configs  | `ListTaskPushNotificationConfigs`  | `ListTaskPushNotificationConfigs`  | `GET /tasks/{id}/pushNotificationConfigs`               |
-| Delete push notification config | `DeleteTaskPushNotificationConfig` | `DeleteTaskPushNotificationConfig` | `DELETE /tasks/{id}/pushNotificationConfigs/{configId}` |
-| Get extended Agent Card         | `GetExtendedAgentCard`             | `GetExtendedAgentCard`             | `GET /extendedAgentCard`                                |
+| Functionality                   | JSON-RPC Method                    | gRPC Method                        | REST Endpoint                                           | Email Operation                                         | Spreadsheet Operation                                                                           |
+| :------------------------------ | :--------------------------------- | :--------------------------------- | :------------------------------------------------------ | :------------------------------------------------------ | :---------------------------------------------------------------------------------------------- |
+| Send message                    | `SendMessage`                      | `SendMessage`                      | `POST /message:send`                                    | One `SEND_MESSAGE` email                                | Append one `Requests` row                                                                       |
+| Send streaming message          | `SendStreamingMessage`             | `SendStreamingMessage`             | `POST /message:stream`                                  | Not supported (`UnsupportedOperationError`)             | Not supported (`UnsupportedOperationError` row)                                                 |
+| Get task                        | `GetTask`                          | `GetTask`                          | `GET /tasks/{id}`                                       | One `GET_TASK` email                                    | Local read of `Results` rows; `a2a.get_task` row for responder-held state                       |
+| List tasks                      | `ListTasks`                        | `ListTasks`                        | `GET /tasks`                                            | One `LIST_TASKS` email                                  | Local scan of `Requests` and `Results` rows                                                     |
+| Cancel task                     | `CancelTask`                       | `CancelTask`                       | `POST /tasks/{id}:cancel`                               | One `CANCEL_TASK` email                                 | `a2a.cancel` `Requests` row                                                                     |
+| Subscribe to task               | `SubscribeToTask`                  | `SubscribeToTask`                  | `POST /tasks/{id}:subscribe`                            | Successive `TASK_UPDATE` emails                         | Progress `Results` rows plus polling                                                            |
+| Create push notification config | `CreateTaskPushNotificationConfig` | `CreateTaskPushNotificationConfig` | `POST /tasks/{id}/pushNotificationConfigs`              | Carried as a `SendMessage` data `Part` (Section 12.4.7) | `mailto:` doorbell URL is a no-op success; any other URL is `PushNotificationNotSupportedError` |
+| Get push notification config    | `GetTaskPushNotificationConfig`    | `GetTaskPushNotificationConfig`    | `GET /tasks/{id}/pushNotificationConfigs/{configId}`    | Carried as a `SendMessage` data `Part` (Section 12.4.7) | Mirrors create (Section 13.4.9)                                                                 |
+| List push notification configs  | `ListTaskPushNotificationConfigs`  | `ListTaskPushNotificationConfigs`  | `GET /tasks/{id}/pushNotificationConfigs`               | Carried as a `SendMessage` data `Part` (Section 12.4.7) | Mirrors create (Section 13.4.9)                                                                 |
+| Delete push notification config | `DeleteTaskPushNotificationConfig` | `DeleteTaskPushNotificationConfig` | `DELETE /tasks/{id}/pushNotificationConfigs/{configId}` | Carried as a `SendMessage` data `Part` (Section 12.4.7) | Mirrors create (Section 13.4.9)                                                                 |
+| Get extended Agent Card         | `GetExtendedAgentCard`             | `GetExtendedAgentCard`             | `GET /extendedAgentCard`                                | One `CARD` email (`GET_AGENT_CARD`)                     | `a2a.get_extended_agent_card` row (Section 13.4.8)                                              |
 
 ### 5.4. Error Code Mappings
 
 All A2A-specific errors defined in [Section 3.3.2](#332-error-handling) **MUST** be mapped to binding-specific error representations. The following table provides the canonical mappings for each standard protocol binding:
 
-| A2A Error Type                        | JSON-RPC Code | gRPC Status           | HTTP Status                 |
-| :------------------------------------ | :------------ | :-------------------- | :-------------------------- |
-| `TaskNotFoundError`                   | `-32001`      | `NOT_FOUND`           | `404 Not Found`             |
-| `TaskNotCancelableError`              | `-32002`      | `FAILED_PRECONDITION` | `400 Bad Request`           |
-| `PushNotificationNotSupportedError`   | `-32003`      | `FAILED_PRECONDITION` | `400 Bad Request`           |
-| `UnsupportedOperationError`           | `-32004`      | `FAILED_PRECONDITION` | `400 Bad Request`           |
-| `ContentTypeNotSupportedError`        | `-32005`      | `INVALID_ARGUMENT`    | `400 Bad Request`           |
-| `InvalidAgentResponseError`           | `-32006`      | `INTERNAL`            | `500 Internal Server Error` |
-| `ExtendedAgentCardNotConfiguredError` | `-32007`      | `FAILED_PRECONDITION` | `400 Bad Request`           |
-| `ExtensionSupportRequiredError`       | `-32008`      | `FAILED_PRECONDITION` | `400 Bad Request`           |
-| `VersionNotSupportedError`            | `-32009`      | `FAILED_PRECONDITION` | `400 Bad Request`           |
+| A2A Error Type                        | JSON-RPC Code | gRPC Status           | HTTP Status                 | Email Representation                                                                   | Spreadsheet Representation                                                             |
+| :------------------------------------ | :------------ | :-------------------- | :-------------------------- | :------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------- |
+| `TaskNotFoundError`                   | `-32001`      | `NOT_FOUND`           | `404 Not Found`             | `TASK_ERROR` email, `error.code` verbatim                                              | Local verdict, or a `TASK_STATE_FAILED` row answering `a2a.get_task` or `a2a.cancel`   |
+| `TaskNotCancelableError`              | `-32002`      | `FAILED_PRECONDITION` | `400 Bad Request`           | `TASK_ERROR` email, plus a `TASK_UPDATE` with the current state                        | `TASK_STATE_FAILED` row answering the `a2a.cancel` row                                 |
+| `PushNotificationNotSupportedError`   | `-32003`      | `FAILED_PRECONDITION` | `400 Bad Request`           | `TASK_ERROR` email (only when the card declares `pushNotifications: false`)            | `TASK_STATE_FAILED` row                                                                |
+| `UnsupportedOperationError`           | `-32004`      | `FAILED_PRECONDITION` | `400 Bad Request`           | `TASK_ERROR` email                                                                     | `TASK_STATE_FAILED` row                                                                |
+| `ContentTypeNotSupportedError`        | `-32005`      | `INVALID_ARGUMENT`    | `400 Bad Request`           | `TASK_ERROR` email naming the media type                                               | `TASK_STATE_FAILED` row naming the media type or the oversize payload                  |
+| `InvalidAgentResponseError`           | `-32006`      | `INTERNAL`            | `500 Internal Server Error` | Raised locally by the receiver; the counterparty is notified with a `TASK_ERROR` email | Raised locally on malformed `task_json`; the row is kept and surfaced, never committed |
+| `ExtendedAgentCardNotConfiguredError` | `-32007`      | `FAILED_PRECONDITION` | `400 Bad Request`           | `TASK_ERROR` email in the card exchange                                                | `TASK_STATE_FAILED` row                                                                |
+| `ExtensionSupportRequiredError`       | `-32008`      | `FAILED_PRECONDITION` | `400 Bad Request`           | `TASK_ERROR` email naming the extension URI                                            | `TASK_STATE_FAILED` row naming the extension URI                                       |
+| `VersionNotSupportedError`            | `-32009`      | `FAILED_PRECONDITION` | `400 Bad Request`           | `TASK_ERROR` email naming the supported `protocolVersion`                              | `TASK_STATE_FAILED` row naming the supported version                                   |
 
 **Custom Binding Requirements:**
 
@@ -3001,11 +3001,646 @@ data: { /* StreamResponse object */ }
 **Referenced Objects:** [`StreamResponse`](#323-stream-response)
 Streaming responses are simple, linearly ordered sequences: first a `Task` (or single `Message`), then zero or more status or artifact update events until the task reaches a terminal or interrupted state, at which point the stream closes. Implementations SHOULD avoid re-ordering events and MAY optionally resend a final `Task` snapshot before closing.
 
-## 12. Custom Binding Guidelines
+## 12. Email Protocol Binding
+
+The Email protocol binding provides an asynchronous,
+store-and-forward interface using Internet email (RFC 5322). It is
+intended for agents whose endpoint is a mailbox rather than an
+HTTP listener, including agents that receive a provider-issued
+mailbox (for example, a `muse.ai` address) and agents behind
+intermittent connectivity. The binding preserves the canonical
+data model (Section 4) and the abstract operations (Section 3)
+without change.
+
+### 12.1. Protocol Requirements
+
+- **Protocol:** RFC 5322 messages with MIME (RFC 2045–2049),
+  transported by SMTP, submission, or a provider mail API.
+- **Endpoint:** A `mailto:` URL (RFC 6068) containing exactly one
+  address, declared in the Agent Card (see Section 12.3).
+- **Content-Type:** `text/plain; charset=utf-8` for the body part
+  carrying the binding payload. `multipart/mixed` is used if and
+  only if the message carries attachments.
+- **Streaming:** Not supported. Agents **MUST** declare
+  `streaming: false` for this binding.
+- **Push Notifications:** Supported, realized as reply emails to
+  the requesting mailbox (see Section 12.4.7).
+
+### 12.2. Service Parameter Transmission
+
+A2A service parameters defined in Section 3.2.6
+**MUST** be transmitted in the JSON wrapper object defined in
+Section 12.3.2, because mail providers may strip or reorder
+headers:
+
+| Parameter | Transmission |
+| :--- | :--- |
+| `A2A-Version` | Wrapper field `a2aVersion`. An `X-A2A-Version` header **MAY** duplicate it. |
+| `A2A-Extensions` | Wrapper field `extensions` (array of URIs). An `X-A2A-Extensions` header **MAY** duplicate it. |
+
+On any disagreement between a header and the wrapper, the wrapper
+governs.
+
+### 12.3. Message Format
+
+#### 12.3.1. Subject Envelope
+
+Every binding message **MUST** carry a machine-readable subject
+prefix so that receivers can route, deduplicate, and apply reply
+tiering without parsing the body:
+
+```text
+#a2a:v1 #op:<OPERATION> #mid:<messageId>
+#task:<taskId|-> #ctx:<contextId|->
+```
+
+The four tokens are the whole envelope; every value projects a
+canonical field. Identity is carried by the RFC 5322 `From:` /
+`To:` headers and the Agent Card declaration (Section 12.7), task
+state by the `Task` object in the JSON block, and ordering by the
+reply chain and `Task.status.timestamp`. The subject carries no
+sender, recipient, state, or sequence token.
+
+- `#mid:` carries the `messageId` of the payload `Message` and,
+  together with the sender mailbox, is the idempotency key.
+- `#task:` is absent (encoded `-`) in an initial `SendMessage`,
+  which creates a new task. Clients **MUST NOT** invent a `taskId`
+  for task creation.
+- A human-readable suffix **MAY** follow, separated by ` -- `.
+  Receivers **MUST** parse only the token prefix and **MUST**
+  ignore unknown `#key:` tokens.
+
+#### 12.3.2. Body Format
+
+The body has a human-readable zone (the payload's text `Part`s, in
+order) followed by exactly one delimited JSON block, which is
+authoritative on any conflict with the subject or the human zone:
+
+```text
+---A2A-JSON---
+{
+  "a2aBinding": "EMAIL/1.0",
+  "operation": "SEND_MESSAGE",
+  "messageId": "…",
+  "taskId": null,
+  "contextId": "…",
+  "message": { /* Message object */ },
+  "task": null,
+  "error": null
+}
+---END-A2A-JSON---
+```
+
+Exactly one of `message`, `task`, `agentCard`, or `error` is
+non-null, according to the operation (Section 12.4). Binding
+metadata **MUST NOT** be added inside the canonical `Message` or
+`Task` objects themselves.
+
+#### 12.3.3. Threading
+
+The first message of a context has no `In-Reply-To` header. Every
+subsequent message in the context **MUST** set `In-Reply-To` and
+`References` to the context's anchor `Message-ID`, so that mail
+threading and the A2A `contextId` coincide. Receivers **MUST** key
+task and context lookup on the JSON wrapper, using headers only as
+a fallback for legacy mail.
+
+### 12.4. Core Methods
+
+One abstract operation maps to one email. The response to an
+operation is a reply email in the same thread, except for
+`SendMessage`, whose response is one or more `TASK_UPDATE` emails
+ending in a terminal state.
+
+#### 12.4.1. `SendMessage`
+
+- **Request:** `#op:SEND_MESSAGE`; wrapper `message` holds the
+  `SendMessageRequest`'s `Message`. Absent `taskId` creates a new
+  task; a present `taskId` continues that task.
+- **Response:** One or more `#op:TASK_UPDATE` emails; wrapper
+  `task` holds the current `Task` snapshot.
+- **Execution Mode:** Every `SendMessage` over this binding is
+  effectively non-blocking (compare
+  Section 3.2.2). Clients emulate
+  blocking behavior by waiting for the terminal `TASK_UPDATE` or
+  by polling with `GetTask`.
+
+#### 12.4.2. `SendStreamingMessage`
+
+Not supported. An agent that receives a request insisting on
+stream semantics **MUST** respond with a `TASK_ERROR` email
+carrying `UnsupportedOperationError`. Progress is delivered as
+successive `TASK_UPDATE` emails (Section 12.4.6).
+
+#### 12.4.3. `GetTask`
+
+- **Request:** `#op:GET_TASK`; the wrapper `taskId` identifies the
+  task, optionally with a `data` `Part` of the form
+  `{"taskId": "…", "historyLength": n}`.
+- **Response:** A `TASK_UPDATE` email with the current `Task`, or
+  a `TASK_ERROR` email carrying `TaskNotFoundError`.
+
+#### 12.4.4. `ListTasks`
+
+- **Request:** `#op:LIST_TASKS`; filters (`contextId`, `status`,
+  `pageSize`, `pageToken`) are carried in a `data` `Part`.
+- **Response:** A `LIST_TASKS_RESULT` email whose wrapper carries
+  `tasks` (an array of `Task` objects) and an optional
+  `nextPageToken`.
+
+#### 12.4.5. `CancelTask`
+
+- **Request:** `#op:CANCEL_TASK`; the wrapper `taskId` identifies
+  the task. A reason **MAY** be included as a text `Part`.
+- **Response:** A `TASK_UPDATE` email with state
+  `TASK_STATE_CANCELED`, or a `TASK_ERROR` email carrying
+  `TaskNotCancelableError` or `TaskNotFoundError`.
+
+#### 12.4.6. `SubscribeToTask`
+
+Realized as successive `TASK_UPDATE` emails for the subscribed
+task until it reaches a terminal state. No separate subscription
+message is defined.
+
+#### 12.4.7. Push Notification Configuration Methods
+
+Declaring `pushNotifications: true` commits the agent to sending
+an unprompted `TASK_UPDATE` email on every material state change
+to the mailbox that created the task. A
+`TaskPushNotificationConfig` for this binding uses a `mailto:`
+URL as its `url` value to name a different destination.
+Create/Get/List/Delete operations are carried as `SendMessage`
+requests whose `data` `Part` holds the configuration object.
+
+#### 12.4.8. `GetExtendedAgentCard` and Agent Card Discovery
+
+- **Request:** `#op:GET_AGENT_CARD` (or
+  `#op:GET_EXTENDED_AGENT_CARD`).
+- **Response:** A `CARD` email whose wrapper `agentCard` holds the
+  `AgentCard` and which carries the identical card as an
+  attachment named `agent-card.json`.
+- Agents **SHOULD** also publish the card at the well-known HTTPS
+  URL (Section 8) when they operate a site. Absence of a hosted
+  card **MUST NOT** be treated as absence of the agent.
+
+### 12.5. Error Handling
+
+Operation failures are reply emails with `#op:TASK_ERROR`. The
+wrapper `error` field follows the error model of
+Section 3.3.2 (`code`, `message`, optional
+`details`). The following column is proposed for the table in
+Section 5.4:
+
+| A2A Error Type | Email Representation |
+| :--- | :--- |
+| `TaskNotFoundError` | `TASK_ERROR` email, `error.code` verbatim |
+| `TaskNotCancelableError` | `TASK_ERROR` email, plus a `TASK_UPDATE` with the current state |
+| `PushNotificationNotSupportedError` | `TASK_ERROR` email (only when the card declares `pushNotifications: false`) |
+| `UnsupportedOperationError` | `TASK_ERROR` email |
+| `ContentTypeNotSupportedError` | `TASK_ERROR` email naming the media type |
+| `InvalidAgentResponseError` | Raised locally by the receiver of a malformed reply; the counterparty is notified with a `TASK_ERROR` email |
+| `ExtendedAgentCardNotConfiguredError` | `TASK_ERROR` email in the card exchange |
+| `ExtensionSupportRequiredError` | `TASK_ERROR` email naming the extension URI |
+| `VersionNotSupportedError` | `TASK_ERROR` email naming the supported `protocolVersion` |
+
+A hard delivery failure (an SMTP 5xx delivery status notification)
+means the endpoint does not exist: the client **MUST** mark any
+cached card stale and **MUST NOT** retry the same mailbox
+automatically. A soft failure (4xx) leaves the operation pending.
+
+### 12.6. Parts and Artifacts
+
+- A `text` `Part` is rendered in the human zone and carried
+  verbatim in the JSON block.
+- A `data` `Part` is carried verbatim in the JSON block.
+- A `url` `Part` is carried verbatim. Receivers **MUST NOT** fetch
+  it automatically.
+- A `raw` `Part` is carried base64-encoded in the JSON block when
+  small and text-safe; otherwise its bytes travel as a MIME
+  attachment, the JSON entry carries `filename`, `mediaType`, and
+  `metadata` of the form
+  `{"emailAttachment": true, "sha256": "…"}`, and the receiver
+  reconstructs the `Part` from the attachment.
+- Each `Artifact` in a `Task` is carried in the JSON block. Every
+  binary artifact `Part` additionally travels as an attachment,
+  and the sender **MUST** include a manifest (artifact ID, name,
+  filename, media type, SHA-256, size) so that receivers join
+  attachments to artifacts by manifest, never by filename alone.
+
+### 12.7. Authentication
+
+This binding defines no on-wire credential. In particular, bearer
+tokens **MUST NOT** be sent by email, in either direction, for any
+reason, including authentication challenges.
+
+Authentication is mailbox provenance:
+
+1. The receiving provider asserts the sender mailbox (for example,
+   a verified-correspondent or owner-address status, or SPF/DKIM
+   alignment with DMARC pass).
+2. The sender mailbox **MUST** equal the `mailto:` URL declared
+   for this binding in a known Agent Card for that counterparty.
+3. The subject **MUST** carry the Section 12.3.1 envelope, and
+   the `From:` header **MUST** be the mailbox named in (2).
+
+Mail from a known principal's address that carries no valid
+envelope is mail from the human principal, never from their agent:
+it **MUST NOT** be parsed for operations or auto-answered as A2A.
+Mail that fails provenance receives no A2A reply and causes no
+state change (fail-closed).
+
+### 12.8. Agent Card Declaration
+
+Agents **MUST** declare this binding in `supportedInterfaces`.
+The first entry is the preferred interface:
+
+```json
+{
+  "supportedInterfaces": [
+    {
+      "url": "mailto:agent@example.com",
+      "protocolBinding": "EMAIL",
+      "protocolVersion": "1.0"
+    }
+  ],
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": true
+  }
+}
+```
+
+### 12.9. Idempotency and Duplicate Suppression
+
+`SendMessage` processing **MUST** be idempotent on the pair
+(sender mailbox, `messageId`). Receivers **MUST** suppress
+duplicates by `Message-ID` header and by that pair, because
+intermediate forwarding can rewrite headers while `messageId`
+survives. Agents **MUST NOT** retry an operation by re-sending it
+under a new `messageId`; to query a silent counterparty, clients
+send `GetTask`.
+
+### 12.10. Legacy Interop (Decode-Only)
+
+An earlier, pre-binding bridge envelope carried six further
+subject tokens (`#from:`, `#to:`, `#action:`, `#topic:`,
+`#status:`, `#seq:`). They are not part of this binding: senders
+**MUST NOT** emit them. Receivers **SHOULD** accept legacy mail
+(a `#a2a:v1` subject carrying any of those tokens, with no JSON
+block) as interop input, synthesising the `Message` from the text
+body and mapping the legacy action token to an operation, per
+the full binding specification's interop section. The legacy
+labels carry no identity, its state values are non-normative
+hints, and its counter is ignored.
+
+## 13. Spreadsheet Protocol Binding
+
+The Spreadsheet protocol binding provides an asynchronous,
+store-and-forward interface using a shared spreadsheet whose tabs
+act as append-only queues. It is intended for agents whose
+platform provides first-party spreadsheet access in unattended
+runs but no agent email address and no hostable endpoint. The
+binding preserves the canonical data model (Section 4) and the
+abstract operations (Section 3) without change. A reference
+deployment between a hosted agent and a Workspace-native agent
+has run in production since 2025 (doorbell revision verified
+end-to-end in November 2025).
+
+### 13.1. Protocol Requirements
+
+- **Protocol:** A spreadsheet with append, read, and delete-row
+  primitives and an access control list (ACL). The reference
+  provider is Google Sheets.
+- **Endpoint:** The spreadsheet's canonical HTTPS URL, declared in
+  the Agent Card (see Section 13.7). The spreadsheet ID parsed
+  from that URL is the endpoint identity. Implementations **MUST**
+  key all state by (spreadsheet ID, tab name) and **MUST NOT** use
+  the spreadsheet's display title as an identifier, because titles
+  are renamable.
+- **Streaming:** Not supported. Agents **MUST** declare
+  `streaming: false` for this binding.
+- **Push Notifications:** Supported, realized as a content-free
+  wake signal plus polling (see Section 13.3).
+
+### 13.2. Service Parameter Transmission
+
+Spreadsheets have no headers. `A2A-Version` and `A2A-Extensions`
+(Section 3.2.6) **MUST** be carried in
+the request row's `metadata_json` under the key `a2a`, of the form
+`{"version": "1.0", "extensions": ["…"]}`. Absence means version
+`1.0` and no extensions. Responses carry the same information in
+the returned `Task` object's `metadata` under the key `a2a`
+(mirrored in the row's `metadata_json` column).
+
+### 13.3. Wake-Up and Polling
+
+A spreadsheet cannot push. This binding defines one wake signal
+and one fallback; neither carries payload data.
+
+#### 13.3.1. Doorbell
+
+A script bound to the spreadsheet, triggered by any change to the
+spreadsheet, checks whether the `Requests` tab has data rows and,
+if so, sends one email to the single account the responding agent
+watches, subject exactly `A2A-Event`, body limited to a statement
+that a request is pending. The script **MUST** debounce with a
+15-second cache entry so that batch inserts produce one alert, and
+**MUST NOT** write to the spreadsheet, process rows, or modify
+triggers. The responding agent's processing schedule is triggered
+by mail matching that exact subject and, on waking, reads all
+pending request rows; the alert is a hint that work exists, not a
+work item.
+
+#### 13.3.2. Polling Fallback
+
+If the doorbell is unavailable, a time-based schedule **MAY** poll
+the `Requests` tab as a backstop; only latency depends on it. The
+requesting direction (responses) is polled: the requester's poller
+reads the `Results` and `Notes` tabs on a fixed cadence, which
+**SHOULD** be at most 5 minutes.
+
+### 13.4. Core Methods
+
+#### 13.4.1. Sheet Contract (Layout v2)
+
+Row 1 of each tab is a frozen header row with exactly these
+columns, in this order. Data rows are appended after it. Every
+column is either a canonical A2A field name (as in the protocol
+definition) or the object's canonical `metadata` serialised in a
+`metadata_json` column; there are no bespoke field names.
+Writers **MUST** write layout v2; readers **MUST** also accept
+layout v1, whose columns map to v2 as defined in the binding
+specification's legacy appendix (decode-only).
+
+**Requests** (requester appends, responder reads) — a row is a
+`Message`:
+
+```text
+appended_at | message_id | task_id | context_id | kind | parts_json | metadata_json
+```
+
+**Results** (responder appends, requester reads) — a row is a
+`Task`:
+
+```text
+appended_at | task_id | context_id | status | task_json | metadata_json
+```
+
+**Notes** (responder appends, requester reads) — a row is a
+non-task `Message`:
+
+```text
+appended_at | message_id | parts_json | metadata_json
+```
+
+**Card** (responder maintains):
+
+```text
+appended_at | card_version | card_json
+```
+
+The `Card` tab holds exactly one current data row containing the
+responder's complete `AgentCard`; it is replaced in place on card
+changes — the single exception to append-only behavior in this
+binding. Readers **MUST** tolerate a missing `Card` tab (see
+Section 13.4.8). The deployment's sheet layout is declared inside
+`card_json`, in the SPREADSHEET extension's `params` as
+`"sheetLayout": "2"`; absence means layout v1.
+
+Provider cell limits bind (for example, 50,000 characters per cell
+in Google Sheets). Payloads **SHOULD** be at most 40,000
+characters. Larger payloads travel by reference (a `url` `Part` or
+a store key). This version defines no chunking.
+
+#### 13.4.2. `SendMessage`
+
+- **Request:** Append one `Requests` row.
+    - `message_id` is the canonical `Message.messageId`, unique
+    per spreadsheet. Together with the `a2a.token` metadata key
+    it forms the idempotency key.
+    - `task_id` is the canonical `Message.taskId`: empty when the
+    message starts a new task. A sheet-created task's `Task.id`
+    is assigned by the responder and learned from the first
+    `Results` row whose `task_json.history` contains the
+    `message_id`.
+    - `context_id` is the canonical `Message.contextId`, the
+    value only; `referenceTaskIds`, when needed, ride in
+    `metadata_json`.
+    - `metadata_json` is the canonical `Message.metadata`. It
+    **MUST** carry `a2a.token`: a sender-generated, per-message
+    random value with at least 64 bits of entropy, never reused.
+    The token is binding metadata, not a canonical field, so it
+    lives in `metadata` — never in a bespoke column.
+    - `kind` is a dotted name. Names not starting with `a2a.` invoke
+    the skill identified by that name (for example,
+    `flights.search`); names starting with `a2a.` are reserved
+    protocol operations defined by this section.
+    - `parts_json` is the canonical array of `Part` objects,
+    serialised unmodified. A `data` `Part` is simply one element
+    of the array; `text` and `url` `Part`s are elements too.
+- **Response:** One terminal `Results` row (Section 13.4.3),
+  optionally preceded by non-terminal rows.
+
+**Structured data only.** The `Part`s of a request row **MUST**
+carry data and **MUST NOT** contain prose instructions,
+imperatives, or natural-language task descriptions in any `Part`.
+Standing instructions for executing a `kind` live in the
+responding agent's own configuration (for Gemini Spark, its A2A
+skill — its schedule prompt is only a thin trigger that invokes
+the skill) and are changed on the responder side only. This
+requirement is empirical: the reference platform blocks
+instruction-like payloads in unattended runs, so a violating row
+is undeliverable.
+
+#### 13.4.3. Task Responses (`Results` Rows)
+
+The `status` column is the verbatim canonical `Task.status.state`
+(the `TASK_STATE_*` value) — the only write form. `task_json` is
+the canonical `Task` object; `metadata_json` mirrors the `Task`'s
+`metadata` and echoes the triggering message's `a2a.token` (inside
+`task_json.metadata` as well), and the row is linked to its
+message by `task_json.history` — there is no request column on
+`Results`. A result whose token echo does not match the token
+recorded for the linked `message_id` **MUST NOT** be committed.
+Readers **MUST** also decode layout v1 rows: the v1 `status`
+spellings map to canonical states (`done` →
+`TASK_STATE_COMPLETED`, `error` → `TASK_STATE_FAILED`, `working`
+→ `TASK_STATE_WORKING`, `cancelled` → `TASK_STATE_CANCELED`,
+`input_required` → `TASK_STATE_INPUT_REQUIRED`, plus
+`auth_required`, `submitted`, `rejected` analogously), and a v1
+`result_json` that is a plain answer object (rather than a `Task`)
+is wrapped on decode as a `Task` with the mapped state and one
+`Artifact` whose single `data` `Part` is that object. For errors,
+`task_json` is an error object (Section 13.5). A responder **MAY**
+append `TASK_STATE_WORKING` rows before the terminal row;
+consumers treat them as notifications and never commit-and-clear
+on them.
+
+#### 13.4.4. `SendStreamingMessage` and `SubscribeToTask`
+
+Streaming is not supported; an insistent streaming request is
+answered with an `error` row carrying
+`UnsupportedOperationError`. `SubscribeToTask` is realized by the
+progress rows of Section 13.4.3 plus polling (Section 13.3.2).
+
+#### 13.4.5. `GetTask`
+
+A local read; no row is written. The requester searches `Results`
+rows by `task_id` (the row's `task_id` column, or the `Task`'s
+history link to the request's `message_id`) and checks the row's
+`a2a.token` echo against the token it recorded for that message:
+a terminal row yields that `Task`; only non-terminal rows yield a
+`Task` in `TASK_STATE_WORKING`; no `Results` row with an existing
+`Requests` row yields `TASK_STATE_SUBMITTED`; neither yields
+`TaskNotFoundError`. A token mismatch is indistinguishable from
+absence, so task existence is never leaked to a non-holder of the
+token. State held only inside the responder is queried with a
+`Requests` row of kind `a2a.get_task`.
+
+#### 13.4.6. `ListTasks`
+
+A local scan; no row is written. The requester joins `Requests`
+and `Results` rows on `task_id` and the `Task` history's
+`messageId` link (v2), applies the requested filters, and orders
+by `appended_at`. Pagination is an offset over the scan, carried
+in `pageSize` and `pageToken`.
+
+#### 13.4.7. `CancelTask`
+
+Cancellation is a request, never an edit or a deletion, because
+the medium is append-only and deletion is reserved for cleanup
+(Section 13.6):
+
+1. The requester appends a `Requests` row with kind `a2a.cancel`
+   and a fresh (`message_id`, `a2a.token`) pair. Its `parts_json`
+   carries a `data` `Part` of the form
+   `{"target_task_id": "…"}` naming the target by its canonical
+   `task_id`, and its `metadata_json` carries `a2a.target_token`
+   — the `a2a.token` of the original message that created the
+   target — proving the canceller owns the target task.
+2. If the target has no terminal `Results` row, the responder
+   abandons the work, appends the target's terminal row with
+   status `TASK_STATE_CANCELED`, and answers the cancel row with
+   status `TASK_STATE_COMPLETED`.
+3. If the target is already terminal, the responder answers the
+   cancel row with status `TASK_STATE_FAILED` and code
+   `TaskNotCancelableError` — except that cancelling an
+   already-cancelled target returns its cancelled state as
+   `TASK_STATE_COMPLETED` (idempotent cancellation, compare
+   Section 3.3.1).
+4. A cancellation can lose the race against completion. The
+   binding defines no "cancel pending" state and implementations
+   **MUST NOT** claim one.
+
+#### 13.4.8. `GetExtendedAgentCard` and Agent Card Discovery
+
+`GetAgentCard` is reading the `Card` tab (Section 13.4.1). If the
+tab is absent, the requester appends a `Requests` row with kind
+`a2a.get_agent_card`; the responder answers with the card as the
+answering `Task`'s artifact in `task_json` and creates the `Card`
+tab, so the fallback runs at most once.
+`GetExtendedAgentCard` is answered with
+`ExtendedAgentCardNotConfiguredError` unless the card declares
+`extendedAgentCard: true`.
+
+#### 13.4.9. Push Notification Configuration Methods
+
+A `CreateTaskPushNotificationConfig` whose `url` is a `mailto:`
+URL naming the doorbell recipient is a no-op success, because the
+doorbell already notifies that account. Any other URL is answered
+with `PushNotificationNotSupportedError`. Get/List/Delete mirror
+that stance.
+
+#### 13.4.10. Non-Task Messages (`Notes` Rows)
+
+A `Notes` row decodes to a `Message` with `role: ROLE_AGENT`, the
+`parts_json` array as its `Part`s (a note is normally one text
+`Part`), and `metadata` from `metadata_json` — priority rides
+there as the metadata key `a2a.priority`. Notes are
+communication, not task payloads, and **MUST NOT** be used to
+carry a task past Section 13.4.2's structured-data rule.
+
+### 13.5. Error Handling
+
+Failures are terminal `Results` rows with status
+`TASK_STATE_FAILED` and a `task_json` error object following
+Section 3.3.2. The following column is
+proposed for the table in Section 5.4:
+
+| A2A Error Type | Spreadsheet Representation |
+| :--- | :--- |
+| `TaskNotFoundError` | Local verdict (Section 13.4.5), or a `TASK_STATE_FAILED` row answering `a2a.get_task` or `a2a.cancel` |
+| `TaskNotCancelableError` | `TASK_STATE_FAILED` row answering the `a2a.cancel` row |
+| `PushNotificationNotSupportedError` | `TASK_STATE_FAILED` row (Section 13.4.9) |
+| `UnsupportedOperationError` | `TASK_STATE_FAILED` row (including unknown skill `kind` values, which are never silently ignored) |
+| `ContentTypeNotSupportedError` | `TASK_STATE_FAILED` row naming the media type or the oversize payload |
+| `InvalidAgentResponseError` | Raised locally on malformed `task_json`; the row is kept and surfaced, never committed |
+| `ExtendedAgentCardNotConfiguredError` | `TASK_STATE_FAILED` row (Section 13.4.8) |
+| `ExtensionSupportRequiredError` | `TASK_STATE_FAILED` row naming the extension URI |
+| `VersionNotSupportedError` | `TASK_STATE_FAILED` row naming the supported version; also a trigger to re-read the `Card` tab |
+
+Transport failures (spreadsheet unreachable, access revoked)
+cannot be carried by a row. The affected agent surfaces them to
+its principal through its own channels and **MUST NOT** fall back
+to delivering the payload by doorbell email or any other channel.
+
+### 13.6. Idempotency, Cleanup, and Ordering
+
+- **Idempotency:** Processing **MUST** be idempotent on
+  (`message_id`, `a2a.token`). A duplicate `Requests` row is
+  processed and answered once. The same `message_id` with a
+  different `a2a.token` is a collision: neither row is trusted
+  for the other, and the collision is surfaced.
+- **Cleanup:** Each agent's own store is canonical; the sheet is
+  transport only. The requester commits a matched terminal
+  `Results` row to its store, verifies the commit, and only then
+  deletes that row. Unmatched rows are kept and surfaced, never
+  silently dropped. The requester prunes `Requests` rows whose
+  requests are done in its store; the responder **MUST NOT**
+  delete `Requests` rows. `Notes` rows are cleared after verified
+  ingestion. The `Card` tab is never pruned.
+- **Ordering:** Row order within a tab is append order and is
+  authoritative; `appended_at` is a cross-check. A previously read
+  non-terminal row **MUST NOT** regress a committed terminal
+  state.
+
+### 13.7. Authentication and Agent Card Declaration
+
+There is no on-wire credential. Access control is the
+spreadsheet's ACL: the sheet **MUST** be shared with exactly the
+two agents' operating accounts (plus the principals as owners)
+and **MUST NOT** be link-shared or public. A `Results` row is
+committed if and only if its `a2a.token` echo matches the token
+recorded for the `message_id` the row's `Task` history links to,
+in the consumer's own store; that match
+is simultaneously the idempotency check and the authentication of
+the result. Apart from the metadata key `a2a.token`, rows
+**MUST NOT** contain bearer tokens, API keys, passwords, or
+one-time codes.
+
+Agents **MUST** declare this binding in `supportedInterfaces`:
+
+```json
+{
+  "supportedInterfaces": [
+    {
+      "url": "https://docs.google.com/spreadsheets/d/<ID>/edit",
+      "protocolBinding": "SPREADSHEET",
+      "protocolVersion": "1.0"
+    }
+  ],
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": true
+  }
+}
+```
+
+## 14. Custom Binding Guidelines
 
 While the A2A protocol provides three standard bindings (JSON-RPC, gRPC, and HTTP+JSON/REST), implementers **MAY** create custom protocol bindings to support additional transport mechanisms or communication patterns. Custom bindings **MUST** comply with all requirements defined in [Section 5 (Protocol Binding Requirements and Interoperability)](#5-protocol-binding-requirements-and-interoperability). This section provides additional guidelines specific to developing custom bindings.
 
-### 12.1. Binding Requirements
+### 14.1. Binding Requirements
 
 Custom protocol bindings **MUST**:
 
@@ -3014,7 +3649,7 @@ Custom protocol bindings **MUST**:
 3. **Maintain Semantics**: Ensure operations behave consistently with the abstract operation definitions
 4. **Document Completely**: Provide comprehensive documentation of the binding specification
 
-### 12.2. Data Type Mappings
+### 14.2. Data Type Mappings
 
 Custom bindings **MUST** provide clear mappings for:
 
@@ -3023,7 +3658,7 @@ Custom bindings **MUST** provide clear mappings for:
 - **Binary Data**: Specify encoding for binary content (e.g., base64 for text-based protocols)
 - **Enumerations**: Define representation of enum values (e.g., strings, integers)
 
-### 12.3. Service Parameter Transmission
+### 14.3. Service Parameter Transmission
 
 As specified in [Section 3.2.6 (Service Parameters)](#326-service-parameters), custom protocol bindings **MUST** document how service parameters are transmitted. The binding specification **MUST** address:
 
@@ -3037,7 +3672,7 @@ As specified in [Section 3.2.6 (Service Parameters)](#326-service-parameters), c
 - **For native header support**: "Service parameters are transmitted using HTTP request headers. Service parameter keys are case-insensitive and must conform to RFC 7230. Service parameter values must be UTF-8 strings."
 - **For protocols without headers**: "Service parameters are serialized as a JSON object and transmitted in the request metadata field `a2a-service-parameters`."
 
-### 12.4. Error Mapping
+### 14.4. Error Mapping
 
 Custom bindings **MUST**:
 
@@ -3046,7 +3681,7 @@ Custom bindings **MUST**:
 3. **Use Appropriate Codes**: Map to protocol-native error codes where applicable
 4. **Document Error Format**: Specify the structure of error responses
 
-### 12.5. Streaming Support
+### 14.5. Streaming Support
 
 If the binding supports streaming operations:
 
@@ -3057,7 +3692,7 @@ If the binding supports streaming operations:
 
 If streaming is not supported, the binding **MUST** clearly document this limitation in the Agent Card.
 
-### 12.6. Authentication and Authorization
+### 14.6. Authentication and Authorization
 
 Custom bindings **MUST**:
 
@@ -3066,7 +3701,7 @@ Custom bindings **MUST**:
 3. **Handle Challenges**: Define how authentication challenges are communicated
 4. **Maintain Security**: Follow security best practices for the transport protocol
 
-### 12.7. Agent Card Declaration
+### 14.7. Agent Card Declaration
 
 Custom bindings **MUST** be declared in the Agent Card:
 
@@ -3086,7 +3721,7 @@ Custom bindings **MUST** be declared in the Agent Card:
 }
 ```
 
-### 12.8. Interoperability Testing
+### 14.8. Interoperability Testing
 
 Custom binding implementers **SHOULD**:
 
@@ -3095,11 +3730,11 @@ Custom binding implementers **SHOULD**:
 3. **Provide Examples**: Include sample requests and responses
 4. **Test Edge Cases**: Verify handling of error conditions, large payloads, and long-running tasks
 
-## 13. Security Considerations
+## 15. Security Considerations
 
 This section consolidates security guidance and best practices for implementing and operating A2A agents. For additional enterprise security considerations, see [Enterprise-Ready Features](./topics/enterprise-ready.md).
 
-### 13.1. Data Access and Authorization Scoping
+### 15.1. Data Access and Authorization Scoping
 
 Implementations **MUST** ensure appropriate scope limitation based on the authenticated caller's authorization boundaries. This applies to all operations that access or list tasks and other resources.
 
@@ -3129,7 +3764,7 @@ Implementations **MUST** ensure appropriate scope limitation based on the authen
 
 See also: [Section 3.1.4 List Tasks (Security Note)](#314-list-tasks) for operation-specific requirements.
 
-### 13.2. Push Notification Security
+### 15.2. Push Notification Security
 
 When implementing push notifications, both agents (as webhook callers) and clients (as webhook receivers) have security responsibilities.
 
@@ -3162,7 +3797,7 @@ When implementing push notifications, both agents (as webhook callers) and clien
 
 See also: [Section 4.3 Push Notification Objects](#43-push-notification-objects) and [Section 4.3.3 Push Notification Payload](#433-push-notification-payload).
 
-### 13.3. Extended Agent Card Access Control
+### 15.3. Extended Agent Card Access Control
 
 The extended Agent Card feature allows agents to provide additional capabilities or information to authenticated clients beyond what is available in the public Agent Card.
 
@@ -3195,7 +3830,7 @@ The extended Agent Card feature allows agents to provide additional capabilities
 
 See also: [Section 3.1.11 Get Extended Agent Card](#3111-get-extended-agent-card) and [Section 3.3.4 Capability Validation](#334-capability-validation).
 
-### 13.4. General Security Best Practices
+### 15.4. General Security Best Practices
 
 **Transport Security:**
 
@@ -3244,13 +3879,13 @@ See also: [Section 3.1.11 Get Extended Agent Card](#3111-get-extended-agent-card
 - Custom bindings **SHOULD** follow the same security principles as standard bindings
 - Custom bindings **MUST** document authentication integration and credential transmission
 
-See also: [Section 12.6 Authentication and Authorization (Custom Bindings)](#126-authentication-and-authorization).
+See also: [Section 14.6 Authentication and Authorization (Custom Bindings)](#146-authentication-and-authorization).
 
-## 14. IANA Considerations
+## 16. IANA Considerations
 
 This section provides registration templates for the A2A protocol's media type, HTTP headers, and well-known URI, intended for submission to the Internet Assigned Numbers Authority (IANA).
 
-### 14.1. Media Type Registration
+### 16.1. Media Type Registration
 
 #### 14.1.1. application/a2a+json
 
@@ -3306,7 +3941,7 @@ A2A Protocol Working Group, <a2a-protocol@example.org>
 
 **Provisional registration:** No
 
-### 14.2. HTTP Header Field Registrations
+### 16.2. HTTP Header Field Registrations
 
 **Note:** The following HTTP headers represent the HTTP-based protocol binding implementation of the abstract A2A service parameters defined in [Section 3.2.6](#326-service-parameters). These registrations are specific to HTTP/HTTPS transports.
 
@@ -3352,7 +3987,7 @@ The A2A-Extensions header field contains a comma-separated list of extension URI
 A2A-Extensions: https://example.com/extensions/geolocation/v1,https://standards.org/extensions/citations/v1
 ```
 
-### 14.3. Well-Known URI Registration
+### 16.3. Well-Known URI Registration
 
 **URI suffix:** agent-card.json
 
