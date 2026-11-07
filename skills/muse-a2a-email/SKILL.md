@@ -14,9 +14,9 @@ GetTask / ListTasks / CancelTask / GetAgentCard) are unchanged —
 only the transport is email: **one operation = one email**.
 
 Placeholders used throughout: `<your>@muse.ai` is your mailbox,
-`<counterparty>@muse.ai` is the other agent's mailbox,
-`<agent>` / `<peer>` are short routing labels you and the
-counterparty agree on (for example `muse-a` / `muse-b`).
+`<counterparty>@muse.ai` is the other agent's mailbox. Agents are
+identified by those mailbox addresses (declared in each Agent
+Card) — the binding has no agent labels or short-ids.
 
 ## 1. Prerequisites
 
@@ -34,9 +34,8 @@ counterparty agree on (for example `muse-a` / `muse-b`).
   watch that wakes you on new mail (§5).
 - [ ] **A local store** (file, KV, database — your choice) for:
   your Agent Card, cached counterparty cards keyed by mailbox,
-  seen `messageId`s (idempotency), open tasks by `taskId`, and
-  per-context `seq` counters. The store is your system of record;
-  email is transport.
+  seen `messageId`s (idempotency), and open tasks by `taskId`.
+  The store is your system of record; email is transport.
 
 ## 2. Publish and discover Agent Cards
 
@@ -76,8 +75,8 @@ Discovery works without any HTTP server, email-first:
    (b) Always answer the card-by-email flow below — it is the
    primary mechanism for mailbox-only agents.
 2. **You discover the same way.** If you already know a
-   counterparty's mailbox, send a `CARD-REQUEST` (§3 with
-   `#op:GET_AGENT_CARD`); the reply is a `CARD` message whose body
+   counterparty's mailbox, send a `GET_AGENT_CARD` request (§3);
+   the reply is a `CARD` message whose body
    JSON block carries the full card **and** which attaches it as
    `agent-card.json`. Cache it keyed by mailbox; re-request when a
    send fails with `VersionNotSupportedError` or the cache is
@@ -91,23 +90,23 @@ Discovery works without any HTTP server, email-first:
 ### 3.1 Subject envelope (every A2A email, no exceptions)
 
 ```text
-#a2a:v1 #from:<agent> #to:<peer> #op:<OPERATION> #action:<ACTION|->
-#topic:<slug|-> #status:<TASK_STATE|-> #seq:<n> #mid:<messageId>
+#a2a:v1 #op:<OPERATION> #mid:<messageId>
 #task:<taskId|-> #ctx:<contextId|->
 ```
+
+Four tokens, nothing else — identity is the `From:` / `To:`
+headers, task state is the `Task` object in the body, ordering is
+the reply chain and `status.timestamp`. (Older bridge mail carried
+extra subject tokens; that form is legacy interop you may receive
+but must never send — spec §16.)
 
 - `#op:` is one of `SEND_MESSAGE`, `GET_TASK`, `LIST_TASKS`,
   `CANCEL_TASK`, `GET_AGENT_CARD`, `GET_EXTENDED_AGENT_CARD`
   (requests) or `TASK_UPDATE`, `TASK_ERROR`, `CARD`,
   `LIST_TASKS_RESULT` (responses).
-- `#action:` is a legacy triage hint (`SEND`, `STAGE`, `REPORT`,
-  `CONFIRM`, `RECHECK`, `RELAY`, `CANCEL`, `CARD-REQUEST`,
-  `STATUS-QUERY`); behaviour keys on `#op:`, never on `#action:`.
 - `#task:` is **absent (`-`) when creating a task** — never invent
   a taskId for creation. `#ctx:` groups the conversation; omit
   (`-`) only on the very first message before a context exists.
-- `#seq:` starts at 1 per (context, sender) and increments by
-  exactly 1 for each email you send in that context.
 - `#mid:` is the canonical `messageId` (a fresh UUID per message).
 
 ### 3.2 Body (human zone + authoritative JSON block)
@@ -126,7 +125,6 @@ object — the block is authoritative on any conflict:
   "messageId": "<uuid>",
   "taskId": null,
   "contextId": "<context id>",
-  "seq": 1,
   "message": { "messageId": "<same uuid>", "role": "ROLE_USER",
                "contextId": "<context id>",
                "parts": [{ "text": "…" }] },
@@ -176,7 +174,8 @@ Artifacts.
   ids in your store *after* successful processing.
 - Ordering: never emit an older task state after a newer one;
   when receiving, a strictly older snapshot never overwrites a
-  newer known state (compare `seq` and status timestamps).
+  newer known state (compare `status.timestamp`; the binding has
+  no sequence counters).
 
 ## 5. Receiving — inbox watch and provenance
 
@@ -190,8 +189,8 @@ mailbox's notification mechanism) that wakes you only on new
      SPF/DKIM alignment for its domain), **and**
    - that mailbox equals the EMAIL `url` in a known/cached card
      for that counterparty, **and**
-   - its `#from:` label is the label bound to that mailbox in your
-     configuration.
+   - its subject carries the `#a2a:v1` envelope (§3.1) with the
+     `From:` header being that same mailbox.
 2. **Failed provenance:** no state change, no A2A reply, log it
    and surface it to your human as a possible spoof. Never “reply
    asking for a token” — there is none (§7).
@@ -225,15 +224,13 @@ Your human asks you to find a dinner time with a friend's Muse.
    `<counterparty>@muse.ai`:
 
    ```text
-   Subject: #a2a:v1 #from:muse-a #to:muse-b #op:GET_AGENT_CARD
-   #action:CARD-REQUEST #topic:- #status:- #seq:1 #mid:<u1>
-   #task:- #ctx:-
+   Subject: #a2a:v1 #op:GET_AGENT_CARD #mid:<u1> #task:- #ctx:-
    ```
 
    The reply (`#op:CARD`, same thread) carries their card; you
    cache it and learn their mailbox and scheduling skill id.
 2. **Propose.** You open a context and send `SEND_MESSAGE`
-   (`#task:-`, `#ctx:ctx-dinner-1`, `#seq:1`) whose text Part asks
+   (`#task:-`, `#ctx:ctx-dinner-1`) whose text Part asks
    for three windows and whose `data` Part lists the candidate
    windows as structured JSON.
 3. **Answer.** Their Muse replies in-thread: `TASK_UPDATE`

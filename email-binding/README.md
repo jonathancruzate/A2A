@@ -71,17 +71,24 @@ mutually supported `supportedInterfaces` entry per counterparty.
 ## The binding in one paragraph
 
 One A2A operation = one email. The `Subject` carries a compact,
-machine-readable envelope — a generalisation of the bridge envelope
-Muse has run in production since 2026-09-30
-(`#a2a:v1 #from:… #to:… #action:… #topic:… #status:… #seq:…`) extended
-with `#op:`, `#mid:`, `#task:`, `#ctx:` — so a watcher can route
-without opening the body. The body renders the first text Part for
+machine-readable envelope — `#a2a:v1 #op:… #mid:… #task:… #ctx:…`,
+four tokens, each a projection of a canonical field — so a watcher
+can route without opening the body. Identity rides on the mail
+headers and the Agent Card, task state on the `Task` object, and
+ordering on the reply chain and `status.timestamp`; the subject
+carries none of those. The body renders the first text Part for
 humans, then carries the full canonical object as a delimited JSON
 block that is authoritative on conflict. Replies thread with
-`In-Reply-To` / `References`; the thread *is* the `contextId`, and
-`#seq:` is monotonic inside it. Bearer tokens are **never** sent by
-email; provenance is mailbox identity, fail-closed. Streaming is
-`false`; push notifications are realised as reply emails.
+`In-Reply-To` / `References`; the thread *is* the `contextId`.
+Bearer tokens are **never** sent by email; provenance is mailbox
+identity, fail-closed. Streaming is `false`; push notifications
+are realised as reply emails.
+
+Historical note: the envelope generalises the bridge envelope Muse
+ran in production from 2026-09-30 (`#a2a:v1 #from:… #to:… #action:…
+#topic:… #status:… #seq:…`). That fuller form is legacy interop
+history only — receivers may decode it (SPEC §16), senders never
+emit it.
 
 ## Relationship to the old plans
 

@@ -73,18 +73,22 @@ prefix so that receivers can route, deduplicate, and apply reply
 tiering without parsing the body:
 
 ```text
-#a2a:v1 #from:<agent> #to:<agent> #op:<OPERATION>
-#action:<ACTION|-> #topic:<slug|-> #status:<TASK_STATE|->
-#seq:<n> #mid:<messageId> #task:<taskId|-> #ctx:<contextId|->
+#a2a:v1 #op:<OPERATION> #mid:<messageId>
+#task:<taskId|-> #ctx:<contextId|->
 ```
+
+The four tokens are the whole envelope; every value projects a
+canonical field. Identity is carried by the RFC 5322 `From:` /
+`To:` headers and the Agent Card declaration (Section 15.7), task
+state by the `Task` object in the JSON block, and ordering by the
+reply chain and `Task.status.timestamp`. The subject carries no
+sender, recipient, state, or sequence token.
 
 - `#mid:` carries the `messageId` of the payload `Message` and,
   together with the sender mailbox, is the idempotency key.
 - `#task:` is absent (encoded `-`) in an initial `SendMessage`,
   which creates a new task. Clients **MUST NOT** invent a `taskId`
   for task creation.
-- `#seq:` is a per-`(contextId, sender)` counter starting at `1`,
-  incremented by exactly one per message in the context.
 - A human-readable suffix **MAY** follow, separated by ` -- `.
   Receivers **MUST** parse only the token prefix and **MUST**
   ignore unknown `#key:` tokens.
@@ -103,7 +107,6 @@ authoritative on any conflict with the subject or the human zone:
   "messageId": "…",
   "taskId": null,
   "contextId": "…",
-  "seq": 1,
   "message": { /* Message object */ },
   "task": null,
   "error": null
@@ -260,8 +263,8 @@ Authentication is mailbox provenance:
    alignment with DMARC pass).
 2. The sender mailbox **MUST** equal the `mailto:` URL declared
    for this binding in a known Agent Card for that counterparty.
-3. The `#from:` value **MUST** be the short identifier bound to
-   that mailbox in local configuration.
+3. The subject **MUST** carry the Section 15.3.1 envelope, and
+   the `From:` header **MUST** be the mailbox named in (2).
 
 Mail from a known principal's address that carries no valid
 envelope is mail from the human principal, never from their agent:
@@ -299,3 +302,16 @@ intermediate forwarding can rewrite headers while `messageId`
 survives. Agents **MUST NOT** retry an operation by re-sending it
 under a new `messageId`; to query a silent counterparty, clients
 send `GetTask`.
+
+### 15.10. Legacy Interop (Decode-Only)
+
+An earlier, pre-binding bridge envelope carried six further
+subject tokens (`#from:`, `#to:`, `#action:`, `#topic:`,
+`#status:`, `#seq:`). They are not part of this binding: senders
+**MUST NOT** emit them. Receivers **SHOULD** accept legacy mail
+(a `#a2a:v1` subject carrying any of those tokens, with no JSON
+block) as interop input, synthesising the `Message` from the text
+body and mapping the legacy action token to an operation, per
+the full binding specification's interop section. The legacy
+labels carry no identity, its state values are non-normative
+hints, and its counter is ignored.

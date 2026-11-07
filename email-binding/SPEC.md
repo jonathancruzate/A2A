@@ -84,7 +84,7 @@ An EMAIL-only or EMAIL-preferred card **MUST** declare honestly:
   by webhook. `TaskPushNotificationConfig.url` in this binding is a
   `mailto:` URL.
 - The card **SHOULD** carry the extension declaration in §2.4 so
-  legacy bridge tooling recognises the envelope.
+  receivers can recognise the envelope form (§6) from the card.
 
 ### 2.3 Security declaration
 
@@ -95,7 +95,7 @@ extension parameter (§12), not as an upstream `SecurityScheme`,
 because no credential traverses the wire. A card that also offers
 HTTP bindings declares `bearerAuth` for *those* interfaces only.
 
-### 2.4 Bridge-envelope extension (interop)
+### 2.4 Envelope extension declaration
 
 ```json
 {
@@ -103,15 +103,16 @@ HTTP bindings declares `bearerAuth` for *those* interfaces only.
   "description": "A2A EMAIL binding v1.0: canonical Task/Message JSON over email; subject carries the #a2a:v1 envelope.",
   "required": false,
   "params": {
-    "envelope": "#a2a:v1 #from:<agent> #to:<agent> #op:<OP> #action:<ACTION|-> #topic:<slug|-> #status:<TASK_STATE|-> #seq:<n> #mid:<messageId> #task:<taskId|-> #ctx:<contextId|->",
+    "envelope": "#a2a:v1 #op:<OP> #mid:<messageId> #task:<taskId|-> #ctx:<contextId|->",
     "auth": "mailbox-identity; see SPEC §12. Bearer tokens are never sent by email."
   }
 }
 ```
 
 This supersedes the former `…/a2a-extensions/bridge-envelope/v1`
-extension, whose `params.envelope`, `provenance`, and
-`taskStateMapping` are subsumed by §§6, 12, and 10 of this spec.
+extension, whose `params.envelope` and `provenance` are subsumed
+by §§6 and 12 of this spec; its task-state hints survive only as
+decode-side interop (§16).
 
 ## 3. Discovery — how a client obtains the Agent Card
 
@@ -157,12 +158,13 @@ with `#op:GET_EXTENDED_AGENT_CARD`; it **MUST** fail with
   distinct A2A agents onto one mailbox under this binding; the
   legacy `+agent` Gmail aliases remain readable for interop (§16)
   but are not EMAIL-binding endpoints.
-- **Agent short-id** (`#from:` / `#to:` values) is a local routing
-  label, not an identity proof: lowercase `[a-z0-9][a-z0-9._-]*`
-  (`muse`, `google`/`ex0`, `steph-agent` in Muse's current
-  deployment). Identity is the `From:` mailbox (§12); a mismatch
-  between short-id and mailbox mapping is a provenance failure.
-- `From:` **MUST** be the sending agent's declared mailbox.
+- **Identity is the mailbox address itself.** This binding defines
+  no agent identifiers of its own: an agent is identified by the
+  `mailto:` URL of the EMAIL interface in its Agent Card
+  (upstream `AgentCard.supportedInterfaces`), and the RFC 5322
+  `From:` / `To:` headers carry those addresses on the wire (§12).
+  There is no sender/recipient token in the subject (§6).
+- `From:` **MUST** be the sending agent's card-declared mailbox.
   `To:` **MUST** contain exactly the receiving agent's mailbox for
   binding traffic. Human principals **MUST NOT** be Cc'd on binding
   traffic unless the operation explicitly concerns them.
@@ -194,13 +196,7 @@ be ignored by receivers, never treated as errors.
 
 ```text
 subject   = "#a2a:v1" 1*( SP token )
-token     = "#from:" agent-id
-          / "#to:" agent-id
-          / "#op:" operation
-          / "#action:" action / "-"
-          / "#topic:" slug / "-"
-          / "#status:" task-state / "-"
-          / "#seq:" 1*DIGIT
+token     = "#op:" operation
           / "#mid:" message-id
           / "#task:" task-id / "-"
           / "#ctx:" context-id / "-"
@@ -210,34 +206,34 @@ operation = "SEND_MESSAGE" / "GET_TASK" / "LIST_TASKS"
           / "CANCEL_TASK" / "GET_AGENT_CARD"
           / "GET_EXTENDED_AGENT_CARD" / "TASK_UPDATE"
           / "TASK_ERROR" / "CARD" / "LIST_TASKS_RESULT"
-action    = "SEND" / "STAGE" / "REPORT" / "CONFIRM" / "RECHECK"
-          / "RELAY" / "CANCEL" / "CARD-REQUEST" / "STATUS-QUERY"
-          / "INPUT" / extension-action
-slug      = 1*( ALPHA / DIGIT / "-" / "_" )   ; lowercase, no spaces
 ```
+
+The four tokens are the whole envelope. Every value is a
+projection of a canonical Layer-1/Layer-2 field; identity is
+carried by the `From:` / `To:` headers and the Agent Card (§4),
+task state by the `Task` object in Zone J (§7.3), and ordering
+by the reply chain and `status.timestamp` (§10.2). No other
+`#key:` token is defined by this binding; the historical tokens
+of Muse's pre-binding bridge envelope are decode-side interop
+only (§16) and **MUST NOT** be emitted.
 
 Example (new task):
 
 ```text
-#a2a:v1 #from:muse #to:google #op:SEND_MESSAGE #action:SEND #topic:bridge-relay #status:- #seq:1 #mid:9f2c… #task:- #ctx:ctx-7d31…
+#a2a:v1 #op:SEND_MESSAGE #mid:9f2c… #task:- #ctx:ctx-7d31…
 ```
 
-Example (task completed, seq 3 in the same context):
+Example (task completed, same context):
 
 ```text
-#a2a:v1 #from:google #to:muse #op:TASK_UPDATE #action:CONFIRM #topic:bridge-relay #status:TASK_STATE_COMPLETED #seq:3 #mid:a104… #task:task-51… #ctx:ctx-7d31…
+#a2a:v1 #op:TASK_UPDATE #mid:a104… #task:task-51… #ctx:ctx-7d31…
 ```
 
 ### 6.2 Field semantics
 
 | Token | Source of truth | Rule |
 | --- | --- | --- |
-| `#from:` / `#to:` | §4 short-ids | Routing + triage only; never proof (§12). |
 | `#op:` | §8 | The Layer-2 operation this email performs. The JSON block (§7) repeats it; on conflict the JSON block governs. |
-| `#action:` | Legacy bridge vocabulary | Human/legacy triage hint. New code **SHOULD** emit the §8 mapping; receivers **MUST** key behaviour on `#op:`, not `#action:`. `-` when no legacy action fits. |
-| `#topic:` | Sender-chosen slug | Stable across a thread; used for log correlation. `-` only for `CARD` traffic. |
-| `#status:` | `Task.status.state` | For `TASK_UPDATE`/`TASK_ERROR`: the task's state verbatim (`TASK_STATE_*`). Otherwise `-`, except `GET_TASK` replies which carry the queried state. |
-| `#seq:` | §10.2 | 1 for the first email in a context; strictly +1 per sender per context thereafter. |
 | `#mid:` | `Message.messageId` | The canonical `messageId` of the payload message (for `Task` payloads: `task.status.message.messageId` if present, else the transport `Message-ID` local-part). **MUST** be globally unique; it is the idempotency key. |
 | `#task:` | `Task.id` | Absent/`-` in an initial `SEND_MESSAGE` means *create a new task*. Present means the email concerns that task. Clients **MUST NOT** invent a taskId for creation (upstream §3.4.2). |
 | `#ctx:` | `contextId` | Groups the thread (§10.1). `-` only before assignment (initial request may omit a context; the reply assigns it and every later email carries it). |
@@ -261,7 +257,7 @@ The `text/plain` body has three zones, in order:
 The concatenation of the payload's text Parts, in order, verbatim,
 followed — for `Task` payloads — by a one-line status summary
 (`Task <id>: <state>`). If there is no text Part, Zone H is a single
-line naming the operation and topic. Zone H is what a human who
+line naming the operation. Zone H is what a human who
 opens the mail reads; it carries no normative data beyond Zone J.
 
 ### 7.2 Delimiter
@@ -286,7 +282,6 @@ A single JSON object (UTF-8, pretty-printing optional):
   "messageId": "9f2c…",
   "taskId": null,
   "contextId": "ctx-7d31…",
-  "seq": 1,
   "message": { "…canonical Message (proto-JSON)…" },
   "task": null,
   "error": null
@@ -313,31 +308,24 @@ One Layer-2 call = one email; its response = one reply email (§10),
 except `SEND_MESSAGE`, whose *response stream* is one-or-more
 `TASK_UPDATE` emails ending in a terminal state.
 
-| # | Layer-2 operation | Request `#op:` (+ legacy `#action:`) | Request payload (Zone J) | Response `#op:` | Response payload |
+| # | Layer-2 operation | Request `#op:` | Request payload (Zone J) | Response `#op:` | Response payload |
 | --- | --- | --- | --- | --- | --- |
-| 8.1 | `SendMessage` | `SEND_MESSAGE` (`SEND`/`STAGE`/`RELAY`) | `message` — canonical `Message`; `taskId` absent ⇒ new task, present ⇒ continue task; `contextId` optional | `TASK_UPDATE` (×N) | `task` — canonical `Task` incl. `status`, `history`, `artifacts` |
+| 8.1 | `SendMessage` | `SEND_MESSAGE` | `message` — canonical `Message`; `taskId` absent ⇒ new task, present ⇒ continue task; `contextId` optional | `TASK_UPDATE` (×N) | `task` — canonical `Task` incl. `status`, `history`, `artifacts` |
 | 8.2 | `SendStreamingMessage` | — not offered — | — | `TASK_ERROR` | `error: UnsupportedOperationError` if attempted with stream semantics; otherwise treat as 8.1 |
-| 8.3 | `GetTask` | `GET_TASK` (`STATUS-QUERY`, alias legacy `RECHECK`) | `message` with one `data` Part `{"taskId": "…", "historyLength": n?}` — or wrapper `taskId` alone | `TASK_UPDATE` | `task` (current snapshot) or `TASK_ERROR: TaskNotFoundError` |
-| 8.4 | `ListTasks` | `LIST_TASKS` (`STATUS-QUERY`) | `message.data` Part `{"contextId": "…?", "status": "TASK_STATE_…?", "pageSize": n?, "pageToken": "…?"}` | `LIST_TASKS_RESULT` | `"tasks": [Task, …]`, `"nextPageToken": "…?"` in wrapper |
-| 8.5 | `CancelTask` | `CANCEL_TASK` (`CANCEL`) | wrapper `taskId` + `message` (reason as text Part, optional) | `TASK_UPDATE` | `task` with `TASK_STATE_CANCELED`, or `TASK_ERROR: TaskNotCancelableError` / `TaskNotFoundError` |
+| 8.3 | `GetTask` | `GET_TASK` | `message` with one `data` Part `{"taskId": "…", "historyLength": n?}` — or wrapper `taskId` alone | `TASK_UPDATE` | `task` (current snapshot) or `TASK_ERROR: TaskNotFoundError` |
+| 8.4 | `ListTasks` | `LIST_TASKS` | `message.data` Part `{"contextId": "…?", "status": "TASK_STATE_…?", "pageSize": n?, "pageToken": "…?"}` | `LIST_TASKS_RESULT` | `"tasks": [Task, …]`, `"nextPageToken": "…?"` in wrapper |
+| 8.5 | `CancelTask` | `CANCEL_TASK` | wrapper `taskId` + `message` (reason as text Part, optional) | `TASK_UPDATE` | `task` with `TASK_STATE_CANCELED`, or `TASK_ERROR: TaskNotCancelableError` / `TaskNotFoundError` |
 | 8.6 | `SubscribeToTask` | `SEND_MESSAGE` with `data` Part `{"subscribe": "<taskId>"}` | as 8.1 | `TASK_UPDATE` (×N) | successive `task` snapshots until terminal — the email realisation of the stream |
-| 8.7 | `GetAgentCard` | `GET_AGENT_CARD` (`CARD-REQUEST`) | `message` with empty/text Part | `CARD` | `agentCard` + `agent-card.json` attachment (§3a) |
-| 8.8 | `GetExtendedAgentCard` | `GET_EXTENDED_AGENT_CARD` (`CARD-REQUEST`) | as 8.7 | `CARD` | extended `agentCard`, or `TASK_ERROR: ExtendedAgentCardNotConfiguredError` / `UnsupportedOperationError` |
+| 8.7 | `GetAgentCard` | `GET_AGENT_CARD` | `message` with empty/text Part | `CARD` | `agentCard` + `agent-card.json` attachment (§3a) |
+| 8.8 | `GetExtendedAgentCard` | `GET_EXTENDED_AGENT_CARD` | as 8.7 | `CARD` | extended `agentCard`, or `TASK_ERROR: ExtendedAgentCardNotConfiguredError` / `UnsupportedOperationError` |
 | 8.9 | Push-config ops (`Create/Get/List/DeleteTaskPushNotificationConfig`) | `SEND_MESSAGE` with `data` Part `{"pushConfig": {…}}` | `TaskPushNotificationConfig` JSON; `url` **MUST** be `mailto:` | `TASK_UPDATE` | `task` + wrapper `"pushConfig"` echo; unsupported ⇒ `PushNotificationNotSupportedError` (only if card says `pushNotifications: false`) |
 
 Notes:
 
-- **Status-query alias.** Muse's deployed bridge used
-  `action: RECHECK` for both “work on it” and “report status”. Under
-  this binding those split: work/continue = `SEND_MESSAGE`;
-  pure query = `GET_TASK`. Receivers **MUST** accept a legacy
-  `RECHECK` with no new work content as `GET_TASK`.
-- **Legacy action → state hints** (interop, from the former
-  bridge-envelope extension) remain valid as Zone-H hints only:
-  `STAGE` ≈ task will be `TASK_STATE_SUBMITTED`,
-  `RECHECK`/`REPORT` ≈ `TASK_STATE_WORKING`,
-  `CONFIRM` ≈ `TASK_STATE_COMPLETED`. The `Task` JSON is the
-  only normative state.
+- **Work vs. query.** “Work on it / continue” is `SEND_MESSAGE`;
+  a pure status query is `GET_TASK`. The binding has no third
+  form; the legacy bridge's combined query-and-work token is
+  decode-side interop only (§16).
 - Every request **MUST** receive at least one response email, even
   if only a `TASK_ERROR` or a `TASK_STATE_SUBMITTED` acknowledgement.
   Silence is never a valid A2A response over this binding.
@@ -384,7 +372,7 @@ A `Task.artifacts[]` entry maps to:
    attachment. The manifest is the join key between Zone J and MIME;
    filename alone **MUST NOT** be trusted as the join.
 
-## 10. Threading, context, and sequencing
+## 10. Threading, context, and ordering
 
 ### 10.1 Thread = context
 
@@ -401,14 +389,23 @@ A `Task.artifacts[]` entry maps to:
 - One context **MAY** contain many tasks; one task belongs to
   exactly one context (upstream §3.4).
 
-### 10.2 Sequence numbers
+### 10.2 Ordering (no sequence numbers)
 
-`#seq:` (mirrored as wrapper `seq`) is a per-`(contextId, sender)`
-counter starting at 1, incremented by exactly 1 per email sent in
-that context. It detects gaps and reordering (§13.3); it never
-orders execution — `messageId` and task state do. On context
-creation the request is `seq:1`; the agent's first `TASK_UPDATE`
-in that context is *its own* `seq:1` (counters are per-sender).
+This binding defines **no sequence counter** — upstream A2A has
+none, and email's store-and-forward delivery (§11.1) cannot
+guarantee arrival order anyway. Ordering rests on upstream and
+RFC 5322 mechanisms only:
+
+- **Conversation order** is the reply chain: `In-Reply-To` /
+  `References` (§10.1) plus the `contextId` grouping.
+- **State order** is `Task.status.timestamp` (upstream `Task`
+  field): per task, the snapshot with the newest
+  `status.timestamp` is current, and `Task.history` records the
+  message sequence the agent itself observed.
+- A receiver that suspects it missed an update does not infer
+  one from a gap — there are no gap signals on this wire. It
+  polls with `GET_TASK` (§11.1) and reconciles by
+  `status.timestamp` (§11.3).
 
 ### 10.3 Multi-turn and INPUT_REQUIRED
 
@@ -453,7 +450,7 @@ upstream §3.5's push mechanism; ordering guarantee (§11.3) applies.
 Per task, an agent **MUST** emit `TASK_UPDATE`s in state order and
 **MUST NOT** emit an older state after a newer one. Receivers
 **MUST** tolerate cross-email reordering by comparing
-`(taskId, seq, status.timestamp)`: a strictly older snapshot never
+`(taskId, status.timestamp)`: a strictly older snapshot never
 overwrites a newer known state.
 
 ### 11.4 Polling = inbox watch
@@ -480,8 +477,10 @@ attachments, ever (see §12.4). Authentication is:
    `mailto:` URL of an EMAIL interface in a known/cached Agent Card
    for that counterparty (or be the mailbox that delivered that card
    via §3a).
-3. **Envelope consistency:** `#from:` short-id **MUST** be the label
-   bound to that mailbox in local configuration.
+3. **Envelope consistency:** the subject **MUST** carry the
+   `#a2a:v1` envelope (§6), and the `From:` header mailbox **MUST**
+   be the mailbox named in (2) — the header, not any subject
+   token, is the identity claim being checked.
 
 ### 12.2 Fail-closed provenance (REQUIRED)
 
@@ -494,8 +493,9 @@ attachments, ever (see §12.4). Authentication is:
   **spoof-hold**: no state change, no reply on the A2A lane, log and
   surface to the principal. Never “reply to ask for the token” —
   there is none.
-- Tag/person mismatch (envelope short-id ≠ mailbox owner) is a
-  spoof-hold, identically.
+- No label/mailbox mismatch case exists: the binding defines no
+  sender label beyond the mailbox itself (§4), so there is no
+  secondary identity token that could disagree with it.
 
 ### 12.3 DKIM / signing reliance
 
@@ -549,9 +549,9 @@ on this binding and are unaffected by it.
 
 An operation failure is a reply email in-thread:
 
-- Subject: `#op:TASK_ERROR`, `#status:` = the task's state if a
-  task exists (usually `TASK_STATE_FAILED`), else `-`;
-  `#action:REPORT`.
+- Subject: `#op:TASK_ERROR`. The task's state, when a task exists,
+  is carried by the `Task` object in Zone J — never by the
+  subject (§6).
 - Zone J: `"error": {"code": "<ErrorName>", "message": "<human
   text>", "details": [ … ]}` using upstream §3.3.2's error model
   (code / message / details with `@type`), and — when a task was
@@ -604,19 +604,42 @@ must specify this):
 Header names are case-insensitive; Zone J is authoritative on any
 header/body disagreement.
 
-## 16. Interop with Muse's legacy bridge mail
+## 16. Interop with Muse's legacy bridge mail (decode-only)
 
-Receivers implementing this binding **SHOULD** accept, as
-`SEND_MESSAGE` equivalents, legacy mail that has (i) a subject
-containing `#a2a:v1` with `#from:`/`#to:`/`#action:`/`#topic:`/
-`#status:`/`#seq:` but no `#op:`/`#mid:`/`#task:`/`#ctx:`, and
-(ii) no Zone J block — synthesising the `Message` from the text
-body and mapping `#action:` per §8's table. Senders implementing
-this binding **MUST NOT** emit legacy form. The `#sync_bridge:v1`
-one-line body envelope of the work-calendar bridge is an
-*application payload* (a `data`-equivalent line inside a
-`SEND_MESSAGE` text Part), not a binding element; it is carried
-unchanged inside §7 bodies for that lane.
+Before this binding, Muse's bridge envelope carried six further
+subject tokens: `#from:`, `#to:`, `#action:`, `#topic:`,
+`#status:`, `#seq:` (full historical form: `#a2a:v1 #from:<agent>
+#to:<agent> #action:<ACTION> #topic:<slug> #status:<state>
+#seq:<n>`, in later bridge mail joined by some or all of the §6
+tokens). Those tokens are **not part of this binding**. Senders
+implementing this binding **MUST NOT** emit any of them; the
+normative subject is §6 exactly.
+
+Receivers **SHOULD** still decode them, as interop only:
+
+- A subject containing `#a2a:v1` and any legacy token, with no
+  Zone J block, is legacy mail. The receiver synthesises the
+  `Message` from the text body and maps the legacy action token
+  to an operation: `SEND` / `STAGE` / `RELAY` → `SEND_MESSAGE`;
+  `RECHECK` → `GET_TASK` when the mail carries no new work
+  content, else `SEND_MESSAGE`; `STATUS-QUERY` → `GET_TASK` /
+  `LIST_TASKS`; `CARD-REQUEST` → `GET_AGENT_CARD`; `CANCEL` →
+  `CANCEL_TASK`; `CONFIRM` / `REPORT` → `TASK_UPDATE`.
+- The legacy state hints (`STAGE` ≈ `TASK_STATE_SUBMITTED`,
+  `RECHECK` / `REPORT` ≈ `TASK_STATE_WORKING`, `CONFIRM` ≈
+  `TASK_STATE_COMPLETED`) are non-normative triage hints only;
+  the `Task` JSON is the only normative state.
+- The legacy sender/recipient labels carry no identity: identity
+  is the `From:` mailbox (§12), exactly as for binding mail.
+- The legacy counter is ignored entirely; ordering is §10.2.
+- A binding-form message (§6 envelope + Zone J) that also carries
+  a stray legacy token is decoded as binding mail; the legacy
+  token is ignored, like any unknown token (§6.1).
+
+The `#sync_bridge:v1` one-line body envelope of the work-calendar
+bridge is an *application payload* (a `data`-equivalent line
+inside a `SEND_MESSAGE` text Part), not a binding element; it is
+carried unchanged inside §7 bodies for that lane.
 
 ## 17. Conformance
 
@@ -626,7 +649,8 @@ An implementation conforms to EMAIL binding v1.0 iff it:
 2. Emits and parses §§6–7 exactly (Zone J authoritative).
 3. Implements §8 operations 8.1, 8.3, 8.5, 8.7 (minimum set) and
    fails the rest per §14 rather than silently ignoring them.
-4. Threads and sequences per §10; dedupes per §13.
+4. Threads per §10.1 and orders task state per §10.2; dedupes
+   per §13.
 5. Enforces §12 provenance fail-closed and never transmits
    credentials (§12.4).
 6. Sends a terminal `TASK_UPDATE` (or `TASK_ERROR`) for every
@@ -646,7 +670,6 @@ Please relay this calendar block to the work calendar.
   "messageId": "9f2c1e…",
   "taskId": null,
   "contextId": "ctx-7d31…",
-  "seq": 1,
   "message": {
     "messageId": "9f2c1e…",
     "role": "ROLE_USER",
@@ -661,5 +684,4 @@ Please relay this calendar block to the work calendar.
 
 Terminal reply (`TASK_UPDATE`, `TASK_STATE_COMPLETED`) carries the
 full `Task` in `"task"`, `"message": null`, same `contextId`,
-sender-side `seq:2`, `In-Reply-To` set to the request's
-`Message-ID`.
+`In-Reply-To` set to the request's `Message-ID`.

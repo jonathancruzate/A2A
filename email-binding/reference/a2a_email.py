@@ -42,32 +42,15 @@ TASK_STATES = {
     "TASK_STATE_INPUT_REQUIRED", "TASK_STATE_REJECTED", "TASK_STATE_AUTH_REQUIRED",
 }
 
-# operation -> default legacy #action: (SPEC §8)
-_DEFAULT_ACTION = {
-    "SEND_MESSAGE": "SEND",
-    "GET_TASK": "STATUS-QUERY",
-    "LIST_TASKS": "STATUS-QUERY",
-    "CANCEL_TASK": "CANCEL",
-    "GET_AGENT_CARD": "CARD-REQUEST",
-    "GET_EXTENDED_AGENT_CARD": "CARD-REQUEST",
-    "TASK_UPDATE": "REPORT",
-    "TASK_ERROR": "REPORT",
-    "CARD": "REPORT",
-    "LIST_TASKS_RESULT": "REPORT",
-}
-
+# The token regex stays tolerant on decode: it also captures the
+# legacy pre-binding tokens (from/to/action/topic/status/seq) so
+# parse_subject can surface them for SPEC §16 interop. Encoding
+# never emits them — see _subject.
 _TOKEN_RE = re.compile(r"#(from|to|op|action|topic|status|seq|mid|task|ctx):([^\s]+)")
 _JSON_RE = re.compile(
     r"^---A2A-JSON---\s*$\n(.*?)\n^---END-A2A-JSON---\s*$",
     re.MULTILINE | re.DOTALL,
 )
-
-
-def _slug(topic: str | None) -> str:
-    if not topic:
-        return "-"
-    s = re.sub(r"[^a-z0-9._-]+", "-", topic.strip().lower()).strip("-")
-    return s or "-"
 
 
 def _text_of(parts: list[dict] | None) -> str:
@@ -78,12 +61,13 @@ def _text_of(parts: list[dict] | None) -> str:
     return "\n\n".join(out)
 
 
-def _subject(*, from_agent, to_agent, op, action, topic, status,
-             seq, mid, task_id, context_id, human_suffix=None) -> str:
+def _subject(*, op, mid, task_id, context_id, human_suffix=None) -> str:
+    """The clean normative envelope (SPEC §6): marker + four tokens.
+
+    Identity rides on the RFC 5322 From:/To: headers, task state on
+    the Zone J Task object — neither appears in the subject."""
     subj = (
-        f"#a2a:v1 #from:{from_agent} #to:{to_agent} #op:{op} "
-        f"#action:{action or '-'} #topic:{_slug(topic)} "
-        f"#status:{status or '-'} #seq:{int(seq)} #mid:{mid} "
+        f"#a2a:v1 #op:{op} #mid:{mid} "
         f"#task:{task_id or '-'} #ctx:{context_id or '-'}"
     )
     if human_suffix:
@@ -102,7 +86,7 @@ def _body(wrapper: dict, human_text: str) -> str:
     )
 
 
-def _wrapper(*, operation, message_id, task_id, context_id, seq,
+def _wrapper(*, operation, message_id, task_id, context_id,
              message=None, task=None, error=None, agent_card=None,
              extra: dict | None = None) -> dict:
     w = {
@@ -112,7 +96,6 @@ def _wrapper(*, operation, message_id, task_id, context_id, seq,
         "messageId": message_id,
         "taskId": task_id,
         "contextId": context_id,
-        "seq": int(seq),
         "message": message,
         "task": task,
         "error": error,
@@ -126,13 +109,13 @@ def _wrapper(*, operation, message_id, task_id, context_id, seq,
 
 # ---------------------------------------------------------------- encode
 
-def encode_message(message: dict, *, from_agent: str, to_agent: str,
-                   operation: str = "SEND_MESSAGE", action: str | None = None,
-                   topic: str | None = None, seq: int = 1,
+def encode_message(message: dict, *, operation: str = "SEND_MESSAGE",
                    human_suffix: str | None = None) -> tuple[str, str]:
     """Encode a canonical Message dict as an EMAIL-binding (subject, body).
 
     Absent message['taskId'] means 'create a new task' (SPEC §6.2/§8.1).
+    Addressing (From:/To:) is the caller's mail layer: the envelope
+    carries no sender/recipient tokens (SPEC §4/§6).
     """
     if operation not in OPS:
         raise ValueError(f"unknown operation: {operation!r}")
@@ -142,17 +125,13 @@ def encode_message(message: dict, *, from_agent: str, to_agent: str,
     task_id = msg.get("taskId")
     context_id = msg.get("contextId")
     w = _wrapper(operation=operation, message_id=mid, task_id=task_id,
-                 context_id=context_id, seq=seq, message=msg)
-    subj = _subject(from_agent=from_agent, to_agent=to_agent, op=operation,
-                    action=action or _DEFAULT_ACTION[operation], topic=topic,
-                    status=None, seq=seq, mid=mid, task_id=task_id,
+                 context_id=context_id, message=msg)
+    subj = _subject(op=operation, mid=mid, task_id=task_id,
                     context_id=context_id, human_suffix=human_suffix)
     return subj, _body(w, _text_of(msg.get("parts")))
 
 
-def encode_task(task: dict, *, from_agent: str, to_agent: str,
-                operation: str = "TASK_UPDATE", action: str | None = None,
-                topic: str | None = None, seq: int = 1,
+def encode_task(task: dict, *, operation: str = "TASK_UPDATE",
                 message_id: str | None = None,
                 human_suffix: str | None = None) -> tuple[str, str]:
     """Encode a canonical Task dict (status update / GetTask reply)."""
@@ -165,49 +144,39 @@ def encode_task(task: dict, *, from_agent: str, to_agent: str,
     mid = message_id or status_msg.get("messageId") or str(uuid.uuid4())
     human = _text_of(status_msg.get("parts")) or f"Task {task.get('id')}: {status or 'TASK_STATE_UNSPECIFIED'}"
     w = _wrapper(operation=operation, message_id=mid, task_id=task.get("id"),
-                 context_id=task.get("contextId"), seq=seq, task=task)
-    subj = _subject(from_agent=from_agent, to_agent=to_agent, op=operation,
-                    action=action or ("CONFIRM" if status == "TASK_STATE_COMPLETED"
-                                       else _DEFAULT_ACTION[operation]),
-                    topic=topic, status=status, seq=seq, mid=mid,
-                    task_id=task.get("id"), context_id=task.get("contextId"),
+                 context_id=task.get("contextId"), task=task)
+    subj = _subject(op=operation, mid=mid, task_id=task.get("id"),
+                    context_id=task.get("contextId"),
                     human_suffix=human_suffix)
     return subj, _body(w, human)
 
 
-def encode_error(error: dict, *, from_agent: str, to_agent: str,
-                 task: dict | None = None, topic: str | None = None,
-                 seq: int = 1, message_id: str | None = None,
+def encode_error(error: dict, *, task: dict | None = None,
+                 message_id: str | None = None,
                  task_id: str | None = None, context_id: str | None = None,
                  human_suffix: str | None = None) -> tuple[str, str]:
     """Encode an A2A error (SPEC §14.1). `error` = {code, message, details?}."""
     mid = message_id or str(uuid.uuid4())
     eff_task_id = task_id or (task or {}).get("id")
     eff_ctx = context_id or (task or {}).get("contextId")
-    status = ((task or {}).get("status") or {}).get("state")
     human = f"A2A error {error.get('code')}: {error.get('message', '')}".strip()
     w = _wrapper(operation="TASK_ERROR", message_id=mid, task_id=eff_task_id,
-                 context_id=eff_ctx, seq=seq, task=task, error=error)
-    subj = _subject(from_agent=from_agent, to_agent=to_agent, op="TASK_ERROR",
-                    action="REPORT", topic=topic, status=status, seq=seq,
-                    mid=mid, task_id=eff_task_id, context_id=eff_ctx,
-                    human_suffix=human_suffix)
+                 context_id=eff_ctx, task=task, error=error)
+    subj = _subject(op="TASK_ERROR", mid=mid, task_id=eff_task_id,
+                    context_id=eff_ctx, human_suffix=human_suffix)
     return subj, _body(w, human)
 
 
-def encode_agent_card(card: dict, *, from_agent: str, to_agent: str,
-                      seq: int = 1, message_id: str | None = None,
+def encode_agent_card(card: dict, *, message_id: str | None = None,
                       context_id: str | None = None,
                       human_suffix: str | None = None) -> tuple[str, str]:
     """Encode a CARD reply (SPEC §3a). Caller also attaches agent-card.json."""
     mid = message_id or str(uuid.uuid4())
-    human = f"Agent Card for {card.get('name', from_agent)} (v{card.get('version', '?')}). See JSON block / agent-card.json attachment."
+    human = f"Agent Card for {card.get('name', 'agent')} (v{card.get('version', '?')}). See JSON block / agent-card.json attachment."
     w = _wrapper(operation="CARD", message_id=mid, task_id=None,
-                 context_id=context_id, seq=seq, agent_card=card)
-    subj = _subject(from_agent=from_agent, to_agent=to_agent, op="CARD",
-                    action="REPORT", topic=None, status=None, seq=seq,
-                    mid=mid, task_id=None, context_id=context_id,
-                    human_suffix=human_suffix)
+                 context_id=context_id, agent_card=card)
+    subj = _subject(op="CARD", mid=mid, task_id=None,
+                    context_id=context_id, human_suffix=human_suffix)
     return subj, _body(w, human)
 
 
@@ -301,15 +270,18 @@ if __name__ == "__main__":
              "mediaType": "application/json"},
         ],
     }
-    subj, body = encode_message(original, from_agent="muse", to_agent="google",
-                                operation="SEND_MESSAGE", action="SEND",
-                                topic="bridge-relay", seq=1)
+    subj, body = encode_message(original, operation="SEND_MESSAGE")
     print("SUBJECT:", subj)
     dec = decode_email(subj, body)
     assert dec["operation"] == "SEND_MESSAGE", dec
     assert dec["message"] == {**original}, f"message round-trip mismatch:\n{dec['message']}\nvs\n{original}"
-    assert dec["envelope"]["from"] == "muse" and dec["envelope"]["to"] == "google"
-    assert dec["envelope"]["seq"] == 1 and dec["envelope"]["task"] is None
+    # Clean envelope (SPEC §6): marker + op/mid/task/ctx, nothing else.
+    assert set(dec["envelope"]) == {"version", "op", "mid", "task", "ctx"}, dec["envelope"]
+    assert dec["envelope"]["op"] == "SEND_MESSAGE"
+    assert dec["envelope"]["mid"] == original["messageId"]
+    assert dec["envelope"]["task"] is None
+    assert dec["envelope"]["ctx"] == "ctx-7d31-example"
+    assert "seq" not in dec["wrapper"]
     assert "calendar block" in dec["humanText"]
     print("MESSAGE ROUND-TRIP: OK")
 
@@ -324,18 +296,19 @@ if __name__ == "__main__":
         "artifacts": [],
         "history": [original],
     }
-    subj2, body2 = encode_task(task, from_agent="google", to_agent="muse",
-                               topic="bridge-relay", seq=2)
+    subj2, body2 = encode_task(task)
     print("SUBJECT2:", subj2)
     dec2 = decode_email(subj2, body2)
     assert dec2["task"] == task, "task round-trip mismatch"
-    assert dec2["envelope"]["status"] == "TASK_STATE_COMPLETED"
+    assert set(dec2["envelope"]) == {"version", "op", "mid", "task", "ctx"}, dec2["envelope"]
+    assert dec2["envelope"]["task"] == "task-51-example"
+    # Task state lives in the Task object, never in the subject (§6).
+    assert dec2["task"]["status"]["state"] == "TASK_STATE_COMPLETED"
     assert is_terminal(dec2["task"]) is True
     print("TASK ROUND-TRIP: OK")
 
     esubj, ebody = encode_error(
         {"code": "TaskNotFoundError", "message": "no such task: task-nope"},
-        from_agent="muse", to_agent="google", topic="bridge-relay", seq=1,
         task_id="task-nope", context_id="ctx-7d31-example")
     dec3 = decode_email(esubj, ebody)
     assert dec3["operation"] == "TASK_ERROR" and dec3["error"]["code"] == "TaskNotFoundError"
