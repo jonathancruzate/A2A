@@ -336,11 +336,20 @@ message AuthenticationInfo {
 message AgentInterface {
   // The URL or address where this interface is available. For HTTP-based transports, must be a valid absolute
   // HTTPS URL in production. For gRPC, the address should be in the format "hostname:port".
-  // Example: "https://api.example.com/a2a/v1", "grpc.example.com:443"
+  // For the EMAIL binding, the address is a "mailto:" URL naming the agent's mailbox.
+  // For the SPREADSHEET binding, the address is the canonical HTTPS URL of the shared
+  // spreadsheet; the spreadsheet ID in that URL is the endpoint identity.
+  // Example: "https://api.example.com/a2a/v1", "grpc.example.com:443",
+  // "mailto:agent@example.com", "https://docs.google.com/spreadsheets/d/<ID>/edit"
   string url = 1 [(google.api.field_behavior) = REQUIRED];
   // The protocol binding supported at this URL. This is an open form string, to be
   // easily extended for other protocol bindings. The core ones officially
-  // supported are `JSONRPC`, `GRPC` and `HTTP+JSON`.
+  // supported are `JSONRPC`, `GRPC` and `HTTP+JSON`. Additional standardized
+  // bindings defined by this specification are `EMAIL` (Section 12 of the
+  // specification: canonical A2A objects over Internet email, mailbox endpoint)
+  // and `SPREADSHEET` (Section 13: canonical A2A objects over a shared
+  // spreadsheet's append-only tabs, for agents with first-party spreadsheet
+  // access but no agent mailbox or hostable endpoint).
   string protocol_binding = 2 [(google.api.field_behavior) = REQUIRED];
   // Optional. An opaque string used for routing requests to a specific agent
   // or tenant when multiple agents are served behind a single A2A endpoint.
